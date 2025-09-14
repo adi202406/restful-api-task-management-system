@@ -5,12 +5,19 @@ use App\Models\Board;
 use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 use App\Http\Resources\BoardResource;
 
 class BoardActionController extends Controller
 {
     public function reorder(Request $request, Workspace $workspace, Board $board): JsonResponse
     {
+        if (Gate::denies('update', $board)){
+            return response()->json([
+                'message' => 'You are not authorized to reorder this board.'
+            ], 403);
+        }
+        
         $request->validate([
             'position' => 'required|integer|min:0',
         ]);
@@ -38,6 +45,7 @@ class BoardActionController extends Controller
 
     public function toggleFavorite( Workspace $workspace, Board $board): BoardResource
     {
+        Gate::authorize('toggleFavorite', $board);
         $board->update([
             'is_favorite' => ! $board->is_favorite,
         ]);

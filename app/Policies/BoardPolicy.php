@@ -99,4 +99,12 @@ class BoardPolicy
         // Only owners can permanently delete boards
         return $role === 'owner';
     }
+
+    public function toggleFavorite(User $user, Board $board): bool
+    {
+        $role = $this->getUserRole($user, $board);
+        
+        // Only owners and editors can toggle favorite status
+        return $role === 'owner';
+    }
 }
