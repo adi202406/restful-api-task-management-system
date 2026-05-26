@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Comment;
 use App\Models\Reminder;
 use App\Models\Checklist;
+use App\Models\Status;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -18,6 +19,7 @@ class Card extends Model
 
     protected $fillable = [
         'board_id',
+        'status_id',
         'title',
         'description',
         'due_date',
@@ -32,6 +34,11 @@ class Card extends Model
     public function board()
     {
         return $this->belongsTo(Board::class);
+    }
+
+    public function status()
+    {
+        return $this->belongsTo(Status::class);
     }
 
      public function labels()

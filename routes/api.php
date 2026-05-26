@@ -16,6 +16,7 @@ use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\BoardActionController;
 use App\Http\Controllers\ChecklistItemController;
 use App\Http\Controllers\CardAssignmentController;
+use App\Http\Controllers\StatusController;
 use App\Http\Controllers\Auth\VerificationController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
@@ -68,19 +69,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/workspaces/accept-invitation',[WorkspaceController::class, 'acceptInvitation']);
     Route::delete('workspaces/{id}/users', [WorkspaceController::class, 'removeUser']);
 
-    // Boards (with workspace prefix & scopeBindings)
+    // Boards and labels (workspace-scoped)
     Route::prefix('workspaces/{workspace}')->scopeBindings()->group(function () {
         Route::apiResource('boards', BoardController::class);
+        Route::apiResource('labels', LabelController::class);
 
         Route::prefix('boards/{board}')->group(function () {
             Route::patch('reorder', [BoardActionController::class, 'reorder']);
             Route::patch('toggle-favorite', [BoardActionController::class, 'toggleFavorite']);
-            Route::apiResource('cards', CardController::class)->except(['index']);
+            Route::apiResource('cards', CardController::class)->shallow();
+            Route::apiResource('statuses', StatusController::class)->shallow();
         });
     });
-
-    // Labels
-    Route::apiResource('labels', LabelController::class);
 
     // Card-Label
     Route::prefix('cards')->group(function () {

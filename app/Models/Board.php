@@ -34,4 +34,9 @@ class Board extends Model
     {
         return $this->hasMany(Card::class)->orderBy('position');
     }
+
+    public function statuses()
+    {
+        return $this->hasMany(Status::class)->orderBy('position');
+    }
 }

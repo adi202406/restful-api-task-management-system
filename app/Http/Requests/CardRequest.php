@@ -25,7 +25,8 @@ class CardRequest extends FormRequest
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'due_date' => 'nullable|date',
-            'position' => 'sometimes|integer'
+            'position' => 'sometimes|integer',
+            'status_id' => 'sometimes|nullable|exists:statuses,id'
         ];
     }
 }

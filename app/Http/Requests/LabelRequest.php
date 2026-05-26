@@ -22,6 +22,7 @@ class LabelRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'workspace_id' => 'required|exists:workspaces,id',
             'name' => 'required|string|max:255',
             'color' => 'sometimes|string|max:7|regex:/^#[a-f0-9]{6}$/i'
         ];

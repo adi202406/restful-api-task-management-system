@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Label;
 use App\Models\User;
 use App\Models\Board;
 use App\Models\WorkspaceUser;
@@ -46,6 +47,11 @@ class Workspace extends Model
     public function boards()
     {
         return $this->hasMany(Board::class); // Relasi one-to-many, Workspace -> Board
+    }
+
+    public function labels()
+    {
+        return $this->hasMany(Label::class);
     }
     
 }

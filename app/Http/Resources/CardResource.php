@@ -17,6 +17,7 @@ class CardResource extends JsonResource
         return [
             'id' => $this->id,
             'board_id' => $this->board_id,
+            'status_id' => $this->status_id,
             'title' => $this->title,
             'description' => $this->description,
             'due_date' => $this->due_date?->format('Y-m-d'),
