@@ -13,38 +13,27 @@ class BoardController extends Controller
 {
     public function index(Workspace $workspace)
     {
-        if(Gate::allows('viewAny', Board::class)){
-            $boards = $workspace->boards()
-                ->orderBy('position')
-                ->withCount('cards')
-                ->get();
+        $this->authorize('viewAny', [Board::class, $workspace]);
 
-            return BoardResource::collection($boards);
-        }
+        $boards = $workspace->boards()
+            ->orderBy('position')
+            ->withCount('cards')
+            ->get();
 
-        return response()->json([
-            'message' => 'You are not authorized to view boards in this workspace.'
-        ], 403);
-
+        return BoardResource::collection($boards);
     }
 
     public function store(BoardRequest $request, Workspace $workspace)
     {
-        if(Workspace::where('owner_id', Auth::id())->where('slug', $request->workspace)->exists()) {
-            $validated = $request->validated();
-            $validated['workspace_id'] = $workspace->id;
+        $this->authorize('create', [Board::class, $workspace]);
 
-            $board = Board::create($validated);
+        $board = Board::create([
+            ...$request->validated(),
+            'workspace_id' => $workspace->id,
+        ]);
 
-            return new BoardResource($board);
-        }
-
-        return response()->json([
-            'message' => 'You are not authorized to create boards in this workspace.'
-        ], 403);
-
+        return new BoardResource($board);
     }
-
     public function show(Workspace $workspace, Board $board)
     {
 
@@ -53,7 +42,7 @@ class BoardController extends Controller
 
     public function update(BoardRequest $request, Workspace $workspace, Board $board)
     {
-        if(Gate::allows('update', $board)){
+        if (Gate::allows('update', $board)) {
             $validated = $request->validated();
             $validated['workspace_id'] = $workspace->id;
 
@@ -69,12 +58,12 @@ class BoardController extends Controller
 
     public function destroy(Workspace $workspace, Board $board)
     {
-        if(Gate::denies('delete', $board)){
+        if (Gate::denies('delete', $board)) {
             return response()->json([
                 'message' => 'You are not authorized to delete this board.'
             ], 403);
         }
-        
+
         $board->delete();
 
         return response()->json(null, 204);

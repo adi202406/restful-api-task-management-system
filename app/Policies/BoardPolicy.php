@@ -27,7 +27,7 @@ class BoardPolicy
     public function viewAny(User $user): bool
     {
         // User can view any boards in workspaces they're a member of
-        return $user->workspaces()->exists();
+        return $user->workspaceUsers()->exists();
     }
 
     /**

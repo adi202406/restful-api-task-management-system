@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\WorkspaceUserResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,6 +22,7 @@ class WorkspaceResource extends JsonResource
             'slug' => $this->slug,
             'banner_image' => $this->banner_image,
             'visibility' => $this->visibility,
+            'owner_id' => $this->owner_id,
             'owner' => new UserResource($this->whenLoaded('owner')),
             'members_count' => $this->users()->count(), // Add this line
             'members' => WorkspaceUserResource::collection($this->whenLoaded('workspaceUsers')),

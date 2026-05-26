@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use App\Models\User;
@@ -15,14 +16,21 @@ use Kreait\Firebase\Messaging\Notification;
 use App\Jobs\SendWorkspaceInvitationNotification;
 use App\Notifications\WorkspaceInvitationNotification;
 use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
+use App\Models\WorkspaceInvitation;
 
 class WorkspaceController extends Controller
 {
     // GET /api/workspaces
     public function index()
     {
-        $workspaces = Workspace::where('owner_id', Auth::id())
+        $workspaces = Workspace::where(function ($query) {
+            $query->where('owner_id', Auth::id())
+                ->orWhereHas('users', function ($q) {
+                    $q->where('user_id', Auth::id());
+                });
+        })
             ->withCount('users')
+            ->with('workspaceUsers')
             ->get();
 
         if ($workspaces->isEmpty()) {
@@ -75,7 +83,6 @@ class WorkspaceController extends Controller
             DB::commit();
 
             return new WorkspaceResource($workspace);
-
         } catch (\Throwable $th) {
             DB::rollBack();
             // Log::error($th); // optional: log error for debugging
@@ -89,23 +96,19 @@ class WorkspaceController extends Controller
     // GET /api/workspaces/{id}
     public function show($slug)
     {
-        $workspace = Workspace::where('slug', $slug)
-            ->where(function ($query) {
-                $query->where('owner_id', Auth::id())
-                    ->orWhereHas('workspaceUsers', function ($q) {
-                        $q->where('user_id', Auth::id());
-                    });
-            })
-            ->with(['workspaceUsers'])
-            ->firstOrFail();
+        $workspace = Workspace::where('slug', $slug)->firstOrFail();
 
-        return new WorkspaceResource($workspace);
+        $this->authorize('view', $workspace);
+
+        return new WorkspaceResource($workspace->load(['workspaceUsers.user', 'owner']));
     }
 
     // PUT /api/workspaces/{id}
     public function update(WorkspaceRequest $request, $id)
     {
-        $workspace = Workspace::where('owner_id', Auth::id())->findOrFail($id);
+        $workspace = Workspace::findOrFail($id);
+
+        $this->authorize('update', $workspace);
 
         $validated = $request->validated();
 
@@ -145,7 +148,9 @@ class WorkspaceController extends Controller
     // DELETE /api/workspaces/{id}
     public function destroy($id)
     {
-        $workspace = Workspace::where('owner_id', Auth::id())->findOrFail($id);
+        $workspace = Workspace::findOrFail($id);
+
+        $this->authorize('delete', $workspace);
 
         $workspace->delete();
 
@@ -154,8 +159,9 @@ class WorkspaceController extends Controller
 
     public function inviteUser(Request $request, $id)
     {
-        // Authorize workspace ownership
-        $workspace = Workspace::where('owner_id', Auth::id())->findOrFail($id);
+        $workspace = Workspace::findOrFail($id);
+
+        $this->authorize('inviteUser', $workspace);
 
         // Validate input
         $validated = $request->validate([
@@ -166,7 +172,7 @@ class WorkspaceController extends Controller
         // Get the invited user
         $user = User::where('email', $validated['email'])->first();
 
-            // Prepare notification data
+        // Prepare notification data
         $notificationData = [
             'title'        => 'Workspace Invitation',
             'body'         => 'You have been invited to join "' . $workspace->title . '" as ' . $validated['role'],
@@ -204,16 +210,28 @@ class WorkspaceController extends Controller
             'type'         => 'workspace_invitation',
         ];
 
+        $token = Str::uuid()->toString();
         // Case: user was removed (soft deleted) before — restore and update data
         if ($existingMember && ! is_null($existingMember->pivot->deleted_at)) {
             $workspace->users()->updateExistingPivot($user->id, [
                 'role'       => $validated['role'],
                 'status'     => 'pending',
+                'invitation_token' => $token,
+                'invitation_expires_at' => now()->addDays(7),
+                'invitation_accepted_at' => null,
                 'joined_at'  => null,
                 'deleted_at' => null,
             ]);
 
-            $user->notify(new WorkspaceInvitationNotification($workspace, Auth::user(), $validated['role']));
+
+            $user->notify(
+                new WorkspaceInvitationNotification(
+                    $workspace,
+                    auth()->user(),
+                    $validated['role'],
+                    $token
+                )
+            );
 
             // Send push notification
             SendWorkspaceInvitationNotification::dispatch($user, $notificationData);
@@ -223,15 +241,23 @@ class WorkspaceController extends Controller
             ], 200);
         }
 
-        // New invite
+
         $workspace->users()->attach($user->id, [
-            'role'       => $validated['role'],
-            'status'     => 'pending',
-            'invited_by' => Auth::id(),
-            'joined_at'  => null,
+            'role' => $validated['role'],
+            'status' => 'pending',
+            'invited_by' => auth()->id(),
+            'invitation_token' => $token,
+            'invitation_expires_at' => now()->addDays(7),
         ]);
 
-        $user->notify(new WorkspaceInvitationNotification($workspace, Auth::user(), $validated['role']));
+        $user->notify(
+            new WorkspaceInvitationNotification(
+                $workspace,
+                auth()->user(),
+                $validated['role'],
+                $token
+            )
+        );
 
         // Send push notification
         SendWorkspaceInvitationNotification::dispatch($user, $notificationData);
@@ -241,18 +267,18 @@ class WorkspaceController extends Controller
         ], 201);
     }
 
-    
+
 
     private function sendPushNotification($user, array $data)
     {
         try {
             $messaging = app('firebase.messaging');
-            
+
             // Dapatkan semua device token user yang diundang
             $deviceTokens = UserDevice::where('user_id', $user->id)
                 ->pluck('device_token')
                 ->toArray();
-            
+
             if (empty($deviceTokens)) {
                 return false;
             }
@@ -277,31 +303,69 @@ class WorkspaceController extends Controller
         }
     }
 
-    public function acceptInvitation($id)
+    public function acceptInvitation(Request $request)
+    {
+        $request->validate([
+            'token' => ['required', 'string'],
+        ]);
+
+        $membership = DB::table('workspace_user')
+            ->where('invitation_token', $request->token)
+            ->first();
+
+        if (!$membership) {
+            return response()->json([
+                'message' => 'Invitation not found',
+            ], 404);
+        }
+
+        if ($membership->invitation_accepted_at) {
+            return response()->json([
+                'message' => 'Invitation already used',
+            ], 422);
+        }
+
+        if (
+            $membership->invitation_expires_at &&
+            now()->greaterThan($membership->invitation_expires_at)
+        ) {
+            return response()->json([
+                'message' => 'Invitation expired',
+            ], 422);
+        }
+
+        if ($membership->user_id !== auth()->id()) {
+            return response()->json([
+                'message' => 'Unauthorized invitation',
+            ], 403);
+        }
+
+        DB::table('workspace_user')
+            ->where('id', $membership->id)
+            ->update([
+                'status' => 'active',
+                'joined_at' => now(),
+                'invitation_accepted_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        $workspace = Workspace::findOrFail(
+            $membership->workspace_id
+        );
+
+        return response()->json([
+            'message' => 'Invitation accepted',
+            'workspace' => [
+                'id' => $workspace->id,
+                'slug' => $workspace->slug,
+            ],
+        ]);
+    }
+    public function removeUser(Request $request, $id)
     {
         $workspace = Workspace::findOrFail($id);
 
-        // Check if user has pending invitation
-        $membership = $workspace->users()
-            ->where('user_id', Auth::id())
-            ->wherePivot('status', 'pending')
-            ->firstOrFail();
-
-        // Update status to active
-        $workspace->users()->updateExistingPivot(Auth::id(), [
-            'status'    => 'active',
-            'joined_at' => now(),
-        ]);
-
-        return response()->json([
-            'message' => 'You have successfully joined the workspace',
-        ], 200);
-    }
-
-    public function removeUser(Request $request, $id)
-    {
-        // Authorize workspace ownership
-        $workspace = Workspace::where('owner_id', Auth::id())->findOrFail($id);
+        $this->authorize('removeUser', $workspace);
 
         // Validate input
         $validated = $request->validate([
@@ -333,13 +397,22 @@ class WorkspaceController extends Controller
     }
 
     // Generate a unique slug if already exists
-    private function generateUniqueSlug($baseSlug)
+    private function generateUniqueSlug($title)
     {
-        $slug = $baseSlug;
-        $i    = 1;
-        while (Workspace::where('slug', $slug)->exists()) {
-            $slug = $baseSlug . '-' . $i++;
+        $baseSlug = Str::slug($title);
+
+        if (empty($baseSlug)) {
+            $baseSlug = 'workspace';
         }
+
+        do {
+            $suffix = strtolower(substr(Str::ulid(), -6));
+
+            $slug = "{$baseSlug}-{$suffix}";
+        } while (
+            Workspace::where('slug', $slug)->exists()
+        );
+
         return $slug;
     }
 }

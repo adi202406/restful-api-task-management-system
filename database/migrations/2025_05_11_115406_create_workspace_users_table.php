@@ -17,6 +17,9 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('role', 50); // 'owner', 'editor', 'viewer'
             $table->enum('status', ['active', 'pending', 'removed'])->default('active');
+            $table->string('invitation_token')->nullable()->unique();
+            $table->timestamp('invitation_expires_at')->nullable();
+            $table->timestamp('invitation_accepted_at')->nullable();
             $table->foreignId('invited_by')->nullable();
             $table->timestamp('joined_at')->nullable();
             $table->softDeletes(); // Soft delete

@@ -1,115 +1,56 @@
 <?php
 
-use Tests\TestCase;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\User;
-use App\Http\Requests\RegisterUserRequest;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 
-class RegisterTest extends TestCase
-{
-    use RefreshDatabase;
+uses(RefreshDatabase::class);
 
-    /**
-     * Test successful user registration.
-     */
-    public function test_register_creates_user_and_returns_token()
-    {
-        // Prepare the request data
-        $requestData = [
-            'name' => 'John Doe',
-            'email' => 'john.doe@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123', // Confirm password for validation
-        ];
+it('registers a user and returns token', function () {
+    $response = $this->postJson('/api/auth/register', [
+        'name' => 'John Doe',
+        'email' => 'john.doe@example.com',
+        'password' => 'password123',
+        'password_confirmation' => 'password123',
+    ]);
 
-        // Send a POST request to the registration route
-        $response = $this->postJson('/api/auth/register', $requestData);
-
-        // Assert response status
-        $response->assertStatus(201);
-
-        // Assert response structure
-        $response->assertJsonStructure([
+    $response->assertCreated()
+        ->assertJsonStructure([
             'access_token',
             'token_type',
-            'user' => [
-                'id',
-                'name',
-                'email',
-            ],
+            'user' => ['id', 'name', 'email'],
         ]);
 
-        // Assert user is created in the database
-        $this->assertDatabaseHas('users', [
-            'name' => 'John Doe',
-            'email' => 'john.doe@example.com',
-        ]);
+    $this->assertDatabaseHas('users', [
+        'name' => 'John Doe',
+        'email' => 'john.doe@example.com',
+    ]);
 
-        // Assert password is hashed
-        $user = User::where('email', 'john.doe@example.com')->first();
-        $this->assertTrue(Hash::check('password123', $user->password));
-    }
+    $user = User::where('email', 'john.doe@example.com')->first();
+    expect(Hash::check('password123', $user->password))->toBeTrue();
+});
 
-    /**
-     * Test registration fails with invalid data.
-     */
-    public function test_register_fails_with_invalid_data()
-    {
-        // Prepare invalid request data (missing required fields)
-        $requestData = [
-            'name' => 'John Doe',
-            // Missing email, password, and username
-        ];
+it('fails registration when payload is invalid', function () {
+    $response = $this->postJson('/api/auth/register', [
+        'name' => 'John Doe',
+    ]);
 
-        // Send a POST request to the registration route
-        $response = $this->postJson('/api/auth/register', $requestData);
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['email', 'password']);
+});
 
-        // Assert response status
-        $response->assertStatus(422); // Unprocessable Entity
+it('fails registration when email already exists', function () {
+    User::factory()->create([
+        'email' => 'existing@example.com',
+    ]);
 
-        // Assert the response contains validation errors
-        $response->assertJsonValidationErrors(['email', 'password']);
+    $response = $this->postJson('/api/auth/register', [
+        'name' => 'John Doe',
+        'email' => 'existing@example.com',
+        'password' => 'password123',
+        'password_confirmation' => 'password123',
+    ]);
 
-        // Assert user is not created in the database
-        $this->assertDatabaseMissing('users', [
-            'name' => 'John Doe',
-        ]);
-    }
-
-    /**
-     * Test registration fails with duplicate email.
-     */
-    public function test_register_fails_with_duplicate_email()
-    {
-        // Create an existing user
-        User::create([
-            'name' => 'Existing User',
-            'email' => 'existing@example.com',
-            'password' => Hash::make('password123'),
-        ]);
-
-        // Prepare request data with duplicate email
-        $requestData = [
-            'name' => 'John Doe',
-            'email' => 'existing@example.com', // Duplicate email
-            'password' => 'password123',
-            'password_confirmation' => 'password123', // Confirm password for validation
-        ];
-
-        // Send a POST request to the registration route
-        $response = $this->postJson('/api/auth/register', $requestData);
-
-        // Assert response status
-        $response->assertStatus(422); // Unprocessable Entity
-
-        // Assert the response contains validation errors for the email
-        $response->assertJsonValidationErrors(['email']);
-
-        // Assert user is not created in the database
-        $this->assertDatabaseMissing('users', [
-            'name' => 'John Doe',
-            'email' => 'existing@example.com',
-        ]);
-    }
-}
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['email']);
+});

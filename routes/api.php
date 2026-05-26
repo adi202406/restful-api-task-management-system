@@ -50,7 +50,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/email/verify/{id}/{hash}', [VerificationController::class, 'verify'])->middleware('signed')->name('verification.verify');
 });
 
-// ================== GOOGLE PROFILE & LOGOUT ==================
+// ================== USER PROFILE & LOGOUT ==================
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [GoogleAuthController::class, 'profile']);
     Route::post('/logout', [GoogleAuthController::class, 'logout']);
@@ -58,7 +58,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // ================== AUTHENTICATED ROUTES ==================
 Route::middleware('auth:sanctum')->group(function () {
-
     // Workspaces
     Route::get('/workspaces', [WorkspaceController::class, 'index']);
     Route::post('/workspaces', [WorkspaceController::class, 'store']);
@@ -66,13 +65,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/workspaces/{id}', [WorkspaceController::class, 'update']);
     Route::delete('/workspaces/{id}', [WorkspaceController::class, 'destroy']);
     Route::post('workspaces/{id}/invite', [WorkspaceController::class, 'inviteUser']);
-    Route::patch('workspaces/{id}/accept-invitation', [WorkspaceController::class, 'acceptInvitation']);
+    Route::patch('/workspaces/accept-invitation',[WorkspaceController::class, 'acceptInvitation']);
     Route::delete('workspaces/{id}/users', [WorkspaceController::class, 'removeUser']);
 
     // Boards (with workspace prefix & scopeBindings)
     Route::prefix('workspaces/{workspace}')->scopeBindings()->group(function () {
         Route::apiResource('boards', BoardController::class);
-        
+
         Route::prefix('boards/{board}')->group(function () {
             Route::patch('reorder', [BoardActionController::class, 'reorder']);
             Route::patch('toggle-favorite', [BoardActionController::class, 'toggleFavorite']);

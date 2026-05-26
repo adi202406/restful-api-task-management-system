@@ -5,9 +5,11 @@ namespace App\Providers;
 use App\Models\Board;
 use App\Models\Comment;
 use App\Models\Reminder;
+use App\Models\Workspace;
 use App\Policies\BoardPolicy;
 use App\Policies\CommentPolicy;
 use App\Policies\ReminderPolicy;
+use App\Policies\WorkspacePolicy;
 use App\Services\GoogleAuthService;
 use App\Repositories\UserRepository;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
@@ -23,6 +25,7 @@ class AuthServiceProvider extends ServiceProvider
         Comment::class => CommentPolicy::class,
         Reminder::class => ReminderPolicy::class,
         Board::class => BoardPolicy::class,
+        Workspace::class => WorkspacePolicy::class,
     ];
 
     /**

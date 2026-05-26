@@ -2,96 +2,91 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Services\GoogleAuthService;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use App\Http\Resources\UserResource;
 
 class GoogleAuthController extends Controller
 {
-    protected GoogleAuthService $googleAuthService;
+    public function __construct(
+        protected GoogleAuthService $googleAuthService
+    ) {}
 
-    /**
-     * Constructor with dependency injection
-     *
-     * @param GoogleAuthService $googleAuthService
-     */
-    public function __construct(GoogleAuthService $googleAuthService)
+    public function redirectToGoogle()
     {
-        $this->googleAuthService = $googleAuthService;
+        return $this->googleAuthService->redirectToGoogle();
     }
 
-    /**
-     * Redirect to Google OAuth page
-     *
-     * @return JsonResponse
-     */
-    public function redirectToGoogle(): JsonResponse
+    public function handleGoogleCallback(Request $request)
     {
-        $url = $this->googleAuthService->redirectToGoogle();
+        if ($request->has('error')) {
+            return redirect()->away(
+                config('app.frontend_url').'/login?error='.$request->get('error')
+            );
+        }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Google authentication URL generated',
-            'data' => ['url' => $url]
-        ], 200);
-    }
-
-    /**
-     * Handle the callback from Google
-     *
-     * @return JsonResponse
-     */
-    public function handleGoogleCallback(): JsonResponse
-    {
         try {
-            $authData = $this->googleAuthService->handleGoogleCallback();
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Successfully authenticated with Google',
-                'data' => $authData
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
+            $result = $this->googleAuthService->handleGoogleCallback();
+
+            $user = $result['user'];
+
+            Auth::login($user);
+
+            return redirect()->away(
+                config('app.frontend_url').'/workspaces'
+            );
+
+        } catch (\Throwable $e) {
+            Log::error('Google OAuth Error', [
                 'message' => $e->getMessage(),
-                'data' => null
-            ], 500);
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return redirect()->away(
+                config('app.frontend_url').'/login?error=oauth_failed'
+            );
         }
     }
 
-    /**
-     * Get authenticated user profile
-     *
-     * @param Request $request
-     * @return JsonResponse
-     */
-    public function profile(Request $request): JsonResponse
-    {
-        return response()->json([
-            'status' => 'success',
-            'message' => 'User profile retrieved successfully',
-            'data' => ['user' => $request->user()]
-        ], 200);
-    }
-
-    /**
-     * Logout and revoke token
-     *
-     * @param Request $request
-     * @return JsonResponse
-     */
-    public function logout(Request $request): JsonResponse
+    public function profile(Request $request)
     {
         $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthenticated',
+            ], 401);
+        }
+
+        return response()->json(
+            new UserResource($user)
+        );
+    }
+
+    public function logout(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthenticated',
+            ], 401);
+        }
+
         $this->googleAuthService->revokeGoogleAccess($user);
-        $user->tokens()->delete();
-        
+
+        Auth::guard('web')->logout();
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
         return response()->json([
             'status' => 'success',
-            'message' => 'Successfully logged out',
-            'data' => null
-        ], 200);
+            'message' => 'Logout success',
+        ]);
     }
 }
